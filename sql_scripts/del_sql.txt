@@ -1,0 +1,121 @@
+-- Захватываем ключи для проверки удалений
+insert into DEMIPT.SNZH_STG_CLIENTS_KEYS( client_id )
+select client_id from BANK.CLIENTS;
+
+insert into DEMIPT.SNZH_STG_ACCOUNTS_KEYS( account_num )
+select account from BANK.ACCOUNTS;
+
+insert into DEMIPT.SNZH_STG_CARDS_KEYS( card_num )
+select card_num from BANK.CARDS;
+
+-- открываем новую версию
+insert into DEMIPT.SNZH_DWH_DIM_CLIENTS_HIST(
+    client_id,
+	last_name,
+	first_name,
+	patronymic,
+	date_of_birth,
+	passport_num,
+	passport_valid_to,
+	phone,
+	effective_from,
+	effective_to,
+    deleted_flg)
+select
+	t.client_id,
+	t.last_name,
+	t.first_name,
+	t.patronymic,
+	t.date_of_birth,
+	t.passport_num,
+	t.passport_valid_to,
+	t.phone,
+	sysdate,
+	to_date( '2999-12-31', 'YYYY-MM-DD' ),
+	'Y'
+from DEMIPT.SNZH_DWH_DIM_CLIENTS_HIST t
+left join DEMIPT.SNZH_STG_CLIENTS_KEYS s
+on t.client_id = s.client_id
+where s.client_id is null
+    and effective_to = to_date( '2999-12-31', 'YYYY-MM-DD' )
+	and deleted_flg = 'N';
+
+insert into DEMIPT.SNZH_DWH_DIM_ACCOUNTS_HIST(
+    account_num,
+	valid_to,
+	client,
+	effective_from,
+	effective_to,
+    deleted_flg)
+select
+	t.account_num,
+	t.valid_to,
+	t.client,
+	sysdate,
+	to_date( '2999-12-31', 'YYYY-MM-DD' ),
+	'Y'
+from DEMIPT.SNZH_DWH_DIM_ACCOUNTS_HIST t
+left join DEMIPT.SNZH_STG_ACCOUNTS_KEYS s
+on t.account_num = s.account_num
+where s.account_num is null
+    and effective_to = to_date( '2999-12-31', 'YYYY-MM-DD' )
+	and deleted_flg = 'N';
+
+insert into DEMIPT.SNZH_DWH_DIM_CARDS_HIST(
+    card_num,
+	account_num,
+	effective_from,
+	effective_to,
+    deleted_flg)
+select
+	t.card_num,
+	t.account_num,
+	sysdate,
+	to_date( '2999-12-31', 'YYYY-MM-DD' ),
+	'Y'
+from DEMIPT.SNZH_DWH_DIM_CARDS_HIST t
+left join DEMIPT.SNZH_STG_CARDS_KEYS s
+on t.card_num = s.card_num
+where s.card_num is null
+    and effective_to = to_date( '2999-12-31', 'YYYY-MM-DD' )
+	and deleted_flg = 'N';
+
+-- закрываем предыдущую версию
+update DEMIPT.SNZH_DWH_DIM_CLIENTS_HIST
+set effective_to = sysdate - interval '1' second
+where client_id in ( 
+	select t.client_id
+	from DEMIPT.SNZH_DWH_DIM_CLIENTS_HIST t
+	left join DEMIPT.SNZH_STG_CLIENTS_KEYS s
+	on t.client_id = s.client_id
+	where s.client_id is null 
+        and effective_to = to_date( '2999-12-31', 'YYYY-MM-DD' )
+	    and deleted_flg = 'N')
+    and effective_to = to_date( '2999-12-31', 'YYYY-MM-DD' )
+    and effective_from < sysdate;
+
+update DEMIPT.SNZH_DWH_DIM_ACCOUNTS_HIST
+set effective_to = sysdate - interval '1' second
+where account_num in ( 
+	select t.account_num
+	from DEMIPT.SNZH_DWH_DIM_ACCOUNTS_HIST t
+	left join DEMIPT.SNZH_STG_ACCOUNTS_KEYS s
+	on t.account_num = s.account_num
+	where s.account_num is null 
+        and effective_to = to_date( '2999-12-31', 'YYYY-MM-DD' )
+	    and deleted_flg = 'N')
+    and effective_to = to_date( '2999-12-31', 'YYYY-MM-DD' )
+    and effective_from < sysdate;
+
+update DEMIPT.SNZH_DWH_DIM_CARDS_HIST
+set effective_to = sysdate - interval '1' second
+where card_num in ( 
+	select t.card_num
+	from DEMIPT.SNZH_DWH_DIM_CARDS_HIST t
+	left join DEMIPT.SNZH_STG_CARDS_KEYS s
+	on t.card_num = s.card_num
+	where s.card_num is null 
+        and effective_to = to_date( '2999-12-31', 'YYYY-MM-DD' )
+	    and deleted_flg = 'N')
+    and effective_to = to_date( '2999-12-31', 'YYYY-MM-DD' )
+    and effective_from < sysdate

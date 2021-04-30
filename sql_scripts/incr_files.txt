@@ -1,0 +1,123 @@
+-- Переливаем факты из STG в хранилище
+insert into 
+DEMIPT.SNZH_DWH_FACT_TRANSACTIONS(
+    trans_id, trans_date, amt, card_num, oper_type, oper_result, terminal)
+select 
+    trans_id,
+    to_date(trans_date, 'YYYY-MM-DD HH24:MI:SS') trans_date,
+    cast(replace( amt, '.', ',' ) as decimal(20,2)) amt,
+    card_num, 
+    oper_type, 
+    oper_result, 
+    terminal    
+from DEMIPT.SNZH_STG_TRANSACTIONS;
+
+insert into 
+DEMIPT.SNZH_DWH_FACT_PSSPRT_BLCKLST(
+    passport_num,
+    entry_dt)
+select 
+    passport_num,
+    to_date(entry_dt, 'YYYY-MM-DD') entry_dt
+from DEMIPT.SNZH_STG_PSSPRT_BLACKLIST
+where to_date(entry_dt, 'YYYY-MM-DD') > (select 
+        last_update from DEMIPT.SNZH_META_LOAD
+        where dbname = 'DEMIPT' 
+        and tablename = 'SNZH_DWH_FACT_PSSPRT_BLCKLST');
+
+-- Переливаем измерения из STG в хранилище SCD2
+insert into DEMIPT.SNZH_DWH_DIM_TERMINALS_HIST(  
+    terminal_id,
+    terminal_type,
+    terminal_city,
+    terminal_address,
+    effective_from,
+    effective_to,
+    deleted_flg)
+select 
+    stg.terminal_id,
+    stg.terminal_type,
+    stg.terminal_city,
+    stg.terminal_address,
+    to_date('{0}', 'DDMMYYYY'),
+    to_date( '2999-12-31', 'YYYY-MM-DD' ), 
+    'N' 
+from DEMIPT.SNZH_STG_TERMINALS stg
+left join DEMIPT.SNZH_DWH_DIM_TERMINALS_HIST tgt
+on tgt.terminal_id = stg.terminal_id
+where tgt.terminal_id is Null
+or (effective_to = to_date( '2999-12-31', 'YYYY-MM-DD' ) and (
+tgt.terminal_type != stg.terminal_type
+or tgt.terminal_city != stg.terminal_city
+or tgt.terminal_address != stg.terminal_address));
+
+-- Обновляем данные в хранилище SCD2
+
+update DEMIPT.SNZH_DWH_DIM_TERMINALS_HIST
+set effective_to = to_date( '{0}', 'DDMMYYYY' ) - interval '1' second
+where terminal_id in ( 
+    select tgt.terminal_id
+    from DEMIPT.SNZH_STG_TERMINALS stg
+    left join DEMIPT.SNZH_DWH_DIM_TERMINALS_HIST tgt
+    on tgt.terminal_id = stg.terminal_id
+    where effective_to = to_date( '2999-12-31', 'YYYY-MM-DD' ) 
+        and (tgt.terminal_type != stg.terminal_type
+        or tgt.terminal_city != stg.terminal_city
+        or tgt.terminal_address != stg.terminal_address))
+and effective_from < to_date( '{0}', 'DDMMYYYY' )
+and effective_to = to_date( '2999-12-31', 'YYYY-MM-DD' );
+
+-- Обрабатываем удаления
+insert into DEMIPT.SNZH_STG_TERMINALS_KEYS( terminal_id )
+select terminal_id from DEMIPT.SNZH_STG_TERMINALS;
+
+insert into DEMIPT.SNZH_DWH_DIM_TERMINALS_HIST( 
+    terminal_id,
+    terminal_type,
+    terminal_city,
+    terminal_address,
+    effective_from,
+	effective_to,
+    deleted_flg )
+select
+	t.terminal_id,
+    t.terminal_type,
+    t.terminal_city,
+    t.terminal_address,
+	sysdate,
+	to_date( '2999-12-31', 'YYYY-MM-DD' ),
+	'Y'
+from DEMIPT.SNZH_DWH_DIM_TERMINALS_HIST t
+left join DEMIPT.SNZH_STG_TERMINALS_KEYS s
+on t.terminal_id = s.terminal_id
+where s.terminal_id is null
+    and effective_to = to_date( '2999-12-31', 'YYYY-MM-DD' )
+	and deleted_flg = 'N';
+
+update DEMIPT.SNZH_DWH_DIM_TERMINALS_HIST
+set effective_to = sysdate - interval '1' second
+where terminal_id in ( 
+	select t.terminal_id
+	from DEMIPT.SNZH_DWH_DIM_TERMINALS_HIST t
+	left join DEMIPT.SNZH_STG_TERMINALS_KEYS s
+	on t.terminal_id = s.terminal_id
+	where s.terminal_id is null 
+        and effective_to = to_date( '2999-12-31', 'YYYY-MM-DD' )
+	    and deleted_flg = 'N')
+    and effective_to = to_date( '2999-12-31', 'YYYY-MM-DD' )
+    and effective_from < sysdate;
+
+-- Обновляем метаданные -  последнюю дату загрузки
+update DEMIPT.SNZH_META_LOAD 
+    set last_update = to_date( '{0}', 'DDMMYYYY' )
+    where dbname = 'DEMIPT' and tablename = 'SNZH_DWH_DIM_TERMINALS_HIST';
+
+update DEMIPT.SNZH_META_LOAD 
+    set last_update = (select max(to_date(trans_date, 'YYYY-MM-DD HH24:MI:SS'))
+    from DEMIPT.SNZH_STG_TRANSACTIONS)
+    where dbname = 'DEMIPT' and tablename = 'SNZH_DWH_FACT_TRANSACTIONS';
+
+update DEMIPT.SNZH_META_LOAD 
+    set last_update = (select max(to_date( entry_dt, 'YYYY-MM-DD' ))
+    from DEMIPT.SNZH_STG_PSSPRT_BLACKLIST)
+    where dbname = 'DEMIPT' and tablename = 'SNZH_DWH_FACT_PSSPRT_BLCKLST'

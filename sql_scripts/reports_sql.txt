@@ -1,0 +1,156 @@
+-- Строим отчет для мошеннических операций типа 1
+insert into DEMIPT.SNZH_REP_FRAUD(
+    event_dt,
+    passports,
+    fio,
+    phone,
+    event_type,
+    report_dt)
+select
+    t1.trans_date,
+    t4.passport_num,
+    t4.last_name||' '||t4.first_name||' '||t4.patronymic,
+    t4.phone,
+    '1' event_type,
+    to_date('{0}', 'DDMMYYYY') report_dt
+from DEMIPT.snzh_dwh_fact_transactions t1
+left join DEMIPT.SNZH_DWH_DIM_CARDS_HIST t2
+on t1.card_num = t2.card_num
+    and to_date( '{0}', 'DDMMYYYY HH24:MI:SS' ) between t2.effective_from and t2.effective_to
+left join DEMIPT.SNZH_DWH_DIM_ACCOUNTS_HIST t3
+on t2.account_num = t3.account_num
+    and to_date( '{0}', 'DDMMYYYY HH24:MI:SS' ) between t3.effective_from and t3.effective_to
+left join DEMIPT.SNZH_DWH_DIM_CLIENTS_HIST t4
+on t3.client = t4.client_id
+    and to_date( '{0}', 'DDMMYYYY HH24:MI:SS' ) between t4.effective_from and t4.effective_to
+where 
+    (t1.trans_date between to_date( '{0}', 'DDMMYYYY HH24:MI:SS' ) 
+        and to_date( '{0}', 'DDMMYYYY HH24:MI:SS') + interval '1439' minute)
+    and t1.oper_result = 'SUCCESS'
+    and (t4.passport_valid_to < t1.trans_date
+        or t4.passport_num in (select passport_num from DEMIPT.SNZH_DWH_FACT_PSSPRT_BLCKLST));
+
+-- Строим отчет для мошеннических операций типа 2
+insert into DEMIPT.SNZH_REP_FRAUD(
+    event_dt,
+    passports,
+    fio,
+    phone,
+    event_type,
+    report_dt)
+select
+    t1.trans_date,
+    t4.passport_num,
+    t4.last_name||' '||t4.first_name||' '||t4.patronymic,
+    t4.phone,
+    '2' event_type,
+    to_date('{0}', 'DDMMYYYY') report_dt
+from DEMIPT.snzh_dwh_fact_transactions t1
+left join DEMIPT.SNZH_DWH_DIM_CARDS_HIST t2
+on t1.card_num = t2.card_num
+    and to_date( '{0}', 'DDMMYYYY HH24:MI:SS' ) between t2.effective_from and t2.effective_to
+left join DEMIPT.SNZH_DWH_DIM_ACCOUNTS_HIST t3
+on t2.account_num = t3.account_num
+    and to_date( '{0}', 'DDMMYYYY HH24:MI:SS' ) between t3.effective_from and t3.effective_to
+left join DEMIPT.SNZH_DWH_DIM_CLIENTS_HIST t4
+on t3.client = t4.client_id
+    and to_date( '{0}', 'DDMMYYYY HH24:MI:SS' ) between t4.effective_from and t4.effective_to
+where 
+    (t1.trans_date between to_date( '{0}', 'DDMMYYYY HH24:MI:SS' ) 
+        and to_date( '{0}', 'DDMMYYYY HH24:MI:SS') + interval '1439' minute)
+    and t1.oper_result = 'SUCCESS'
+    and t3.valid_to < t1.trans_date;
+
+-- Строим отчет для мошеннических операций типа 3
+insert into DEMIPT.SNZH_REP_FRAUD(
+    event_dt,
+    passports,
+    fio,
+    phone,
+    event_type,
+    report_dt)
+select
+    t.trans_date,
+    t.passport_num,
+    t.FIO,
+    t.phone,
+    '3' event_type,
+    to_date('{0}', 'DDMMYYYY') report_dt
+from(
+select
+    t1.trans_date,
+    t4.passport_num,
+    t4.last_name||' '||t4.first_name||' '||t4.patronymic FIO,
+    t4.phone,
+    t5.terminal_city,
+    lead( t5.terminal_city ) over ( partition by t1.card_num order by t1.trans_date) next_city,
+    lead( t5.terminal_city, 2 ) over ( partition by t1.card_num order by t1.trans_date) next_next_city,
+    lead( t1.trans_date ) over ( partition by t1.card_num order by t1.trans_date) next_date
+from DEMIPT.snzh_dwh_fact_transactions t1
+left join DEMIPT.SNZH_DWH_DIM_CARDS_HIST t2
+on t1.card_num = t2.card_num
+    and to_date( '{0}', 'DDMMYYYY HH24:MI:SS' ) between t2.effective_from and t2.effective_to
+left join DEMIPT.SNZH_DWH_DIM_ACCOUNTS_HIST t3
+on t2.account_num = t3.account_num
+    and to_date( '{0}', 'DDMMYYYY HH24:MI:SS' ) between t3.effective_from and t3.effective_to
+left join DEMIPT.SNZH_DWH_DIM_CLIENTS_HIST t4
+on t3.client = t4.client_id
+    and to_date( '{0}', 'DDMMYYYY HH24:MI:SS' ) between t4.effective_from and t4.effective_to
+left join DEMIPT.SNZH_DWH_DIM_TERMINALS_HIST t5
+on t1.terminal = t5.terminal_id
+    and to_date( '{0}', 'DDMMYYYY HH24:MI:SS' ) between t5.effective_from and t5.effective_to) t
+where 
+    (t.trans_date between to_date( '{0}', 'DDMMYYYY HH24:MI:SS' ) - interval '60' minute
+        and to_date( '{0}', 'DDMMYYYY HH24:MI:SS') + interval '1439' minute)
+    and t.terminal_city != t.next_city
+    and t.next_city = t.next_next_city
+    and t.trans_date + (interval '60' minute) > t.next_date;
+
+-- Строим отчет для мошеннических операций типа 4
+insert into DEMIPT.SNZH_REP_FRAUD(
+    event_dt,
+    passports,
+    fio,
+    phone,
+    event_type,
+    report_dt)
+select
+    t.trans_date,
+    t.passport_num,
+    t.FIO,
+    t.phone,
+    '4' event_type,
+    to_date('{0}', 'DDMMYYYY') report_dt
+from(
+select
+    t1.trans_date,
+    t1.oper_result,
+    t1.oper_type,
+    t4.passport_num,
+    t4.last_name||' '||t4.first_name||' '||t4.patronymic FIO,
+    t4.phone,
+    t1.amt,
+    lead( t1.amt ) over ( partition by t1.card_num order by t1.trans_date) scnd_amt,
+    lead( t1.amt, 2 ) over ( partition by t1.card_num order by t1.trans_date) thrd_amt,
+    lead( t1.amt, 3 ) over ( partition by t1.card_num order by t1.trans_date) frth_amt,
+    lead( t1.trans_date, 3 ) over ( partition by t1.card_num order by t1.trans_date) frth_date,
+    lead( t1.oper_result ) over ( partition by t1.card_num order by t1.trans_date) scnd_res,
+    lead( t1.oper_result, 2 ) over ( partition by t1.card_num order by t1.trans_date) thrd_res,
+    lead( t1.oper_result, 3 ) over ( partition by t1.card_num order by t1.trans_date) frth_res
+from DEMIPT.snzh_dwh_fact_transactions t1
+left join DEMIPT.SNZH_DWH_DIM_CARDS_HIST t2
+on t1.card_num = t2.card_num
+    and to_date( '{0}', 'DDMMYYYY HH24:MI:SS' ) between t2.effective_from and t2.effective_to
+left join DEMIPT.SNZH_DWH_DIM_ACCOUNTS_HIST t3
+on t2.account_num = t3.account_num
+    and to_date( '{0}', 'DDMMYYYY HH24:MI:SS' ) between t3.effective_from and t3.effective_to
+left join DEMIPT.SNZH_DWH_DIM_CLIENTS_HIST t4
+on t3.client = t4.client_id
+    and to_date( '{0}', 'DDMMYYYY HH24:MI:SS' ) between t4.effective_from and t4.effective_to) t
+where (t.trans_date between to_date( '{0}', 'DDMMYYYY HH24:MI:SS' ) - interval '20' minute
+        and to_date( '{0}', 'DDMMYYYY HH24:MI:SS') + interval '1439' minute)
+    and (t.oper_type = 'WITHDRAW' or t.oper_type = 'PAYMENT')
+    and t.frth_amt <  t.thrd_amt and t.thrd_amt < scnd_amt and t.scnd_amt < t.amt
+    and t.trans_date + (interval '20' minute) > t.frth_date
+    and t.oper_result = 'REJECT' and t.scnd_res = 'REJECT' 
+    and t.thrd_res = 'REJECT' and t.frth_res = 'SUCCESS'

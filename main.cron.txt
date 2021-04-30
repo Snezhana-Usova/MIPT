@@ -1,0 +1,4 @@
+37 00 * * * /home/demipt/susova/main.py
+
+
+

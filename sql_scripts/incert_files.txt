@@ -1,0 +1,18 @@
+-- Заливаем данные из файлов в STG
+insert into DEMIPT.SNZH_STG_PSSPRT_BLACKLIST( 
+    entry_dt, passport_num ) values ( ?, ? );
+
+insert into DEMIPT.SNZH_STG_TRANSACTIONS( 
+    trans_id,
+    trans_date,
+    amt,
+	card_num,
+    oper_type,
+    oper_result,
+    terminal ) values ( ?, ?, ?, ?, ?, ?, ? );
+
+insert into DEMIPT.SNZH_STG_TERMINALS( 
+        terminal_id,
+        terminal_type,
+        terminal_city,
+        terminal_address) values ( ?, ?, ?, ? )
