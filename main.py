@@ -7,7 +7,7 @@ import jaydebeapi
 from py_scripts.my_module import declutter_stg, insert_stg, insert_scd2, merge_scd2, upd_meta
 
 # Установка соединения с сервером
-conn = jaydebeapi.connect('oracle.jdbc.driver.OracleDriver','jdbc:oracle:thin:demipt/gandalfthegrey@de-oracle.chronosavant.ru:1521/deoracle',['demipt','gandalfthegrey'],'/home/demipt/ojdbc8.jar')
+conn = jaydebeapi.connect('oracle.jdbc.driver.OracleDriver','jdbc:oracle:thin:demipt/*********@d*******.******.ru:1521/*****',['******','******'],'/home/demipt/ojdbc8.jar')
 conn.jconn.setAutoCommit(False)
 curs = conn.cursor()
 
